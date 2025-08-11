@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dongnt
+      POSTGRES_PASSWORD: dongcopper80
+      POSTGRES_DB: car_retail
+      TZ: Asia/Ho_Chi_Minh
+      LANG: en_US.utf8
+      LC_ALL: en_US.UTF-8
+    ports:
+      - "5432:5432"
+    networks:
+      - my_network
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dongnt -d car_retail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  my_network:
+    driver: bridge
+
+volumes:
+  pgdata:

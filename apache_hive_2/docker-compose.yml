@@ -1,0 +1,87 @@
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop2.7.4-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=hive-cluster
+    ports:
+      - 9870:9870
+    volumes:
+      - namenode:/hadoop/dfs/name
+    networks:
+      - my_network
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop2.7.4-java8
+    container_name: datanode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    volumes:
+      - datanode:/hadoop/dfs/data
+    networks:
+      - my_network
+    depends_on:
+      - namenode
+
+  postgres11:
+    image: postgres:11
+    container_name: postgres11
+    environment:
+      - POSTGRES_DB=metastore
+      - POSTGRES_USER=hive
+      - POSTGRES_PASSWORD=hive
+      - LANG=en_US.utf8
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8
+    command: ["postgres", "-c", "client_encoding=UTF8"]
+    ports:
+      - 5432:5432
+    networks:
+      - my_network
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    environment:
+      - HIVE_CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HIVE_JDBC_DATABASE_HOST=postgres11
+      - HIVE_JDBC_DATABASE_NAME=metastore
+      - HIVE_JDBC_DATABASE_USER=hive
+      - HIVE_JDBC_DATABASE_PASSWORD=hive
+      - HIVE_JDBC_DATABASE_TYPE=postgres
+    ports:
+      - 9083:9083
+    depends_on:
+      - namenode
+      - datanode
+      - postgres11
+    networks:
+      - my_network
+
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    environment:
+      - HIVE_CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - SERVICE_NAME=hiveserver2
+    ports:
+      - 10000:10000
+      - 10002:10002
+    depends_on:
+      - hive-metastore
+    networks:
+      - my_network
+    volumes:
+      - ./init.sql:/opt/hive-init/init.sql
+    healthcheck:
+      test: ["CMD", "beeline", "-u", "jdbc:hive2://localhost:10000", "-e", "SELECT 1;"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+volumes:
+  namenode:
+  datanode:
+
+networks:
+  my_network:

@@ -1,0 +1,33 @@
+services:
+  oracle-db:
+    image: gvenzl/oracle-xe:21 # Or another suitable Oracle image
+    container_name: oracle_database_instance
+    ports:
+      - "1521:1521"
+      - "5500:5500" # Optional: for Oracle Enterprise Manager Express
+    environment:
+      ORACLE_PASSWORD: dongcopper80 # Set a strong password
+      APP_USER: dongnt                    # User ứng dụng
+      APP_USER_PASSWORD: dongcopper80    # Mật khẩu user ứng dụng
+      NLS_LANG: AMERICAN_AMERICA.AL32UTF8  # Client UTF-8
+    volumes:
+      - oracle-data:/opt/oracle/oradata # Path for persistent data
+      #- ./set_nls_calendar.sql:/container-entrypoint-initdb.d/set_nls_calendar.sql:ro
+      #- ./init.sql:/container-entrypoint-initdb.d/init.sql:ro
+      #- ./create_user.sql:/container-entrypoint-initdb.d/create_user.sql:ro
+    networks:
+      - my_network # Custom network (optional)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -s system/dongcopper80@localhost:1521/XEPDB1"]
+      interval: 30s      # Kiểm tra mỗi 30 giây
+      timeout: 10s       # Timeout 10 giây
+      retries: 5         # Thử lại 5 lần trước khi báo unhealthy
+      start_period: 60s  # Chờ 60 giây trước khi bắt đầu healthcheck (để DB khởi động)
+
+volumes:
+  oracle-data:
+
+networks:
+  my_network: # Custom network definition (optional)
+    driver: bridge

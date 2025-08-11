@@ -1,0 +1,31 @@
+services:
+  redis:
+    image: redis:7.4
+    container_name: redis
+    ports:
+      - "6379:6379"
+    environment:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass dongcopper80
+    restart: unless-stopped
+    networks:
+      - my_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dongcopper80", "PING"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  my_network:
+    driver: bridge
+
+volumes:
+  redis_data:

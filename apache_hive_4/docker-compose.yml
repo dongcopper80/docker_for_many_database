@@ -1,0 +1,175 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: hive-metastore-db
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hivepassword
+      POSTGRES_DB: metastore
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - my_network
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode4
+    environment:
+      - CLUSTER_NAME=hadoop
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    ports:
+      - "9870:9870"   # Namenode UI
+      - "8020:8020"   # Namenode RPC
+    volumes:
+      - namenode:/hadoop/dfs/name
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - my_network
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode4
+    environment:
+      - CLUSTER_NAME=hadoop
+      - NAMENODE_URI=hdfs://namenode4:8020
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"   # Datanode UI
+    volumes:
+      - datanode:/hadoop/dfs/data
+    networks:
+      - my_network
+
+  hive-metastore-init:
+    image: apache/hive:4.0.0
+    depends_on:
+      - postgres
+    volumes:
+      - ./hive-jars/postgresql-42.6.0.jar:/opt/hive/lib/postgresql-42.6.0.jar
+      - ./init-metastore.sh:/init-metastore.sh
+    entrypoint: ["/bin/bash", "/init-metastore.sh"]
+
+  hive-metastore:
+    image: apache/hive:4.0.0
+    container_name: hive-metastore4
+    environment:
+      SERVICE_NAME: metastore
+      HIVE_METASTORE_DRIVER: org.postgresql.Driver
+      HIVE_METASTORE_URL: jdbc:postgresql://postgres:5432/metastore
+      HIVE_METASTORE_USER: hive
+      HIVE_METASTORE_PASSWORD: hivepassword
+      #- LANG=en_US.UTF-8
+      #- LC_ALL=en_US.UTF-8
+    depends_on:
+      - postgres
+      - namenode
+      - hive-metastore-init
+    entrypoint: ["/bin/bash", "-c", "until echo > /dev/tcp/postgres/5432; do echo Waiting for Postgres...; sleep 3; done; schematool -dbType postgres -initSchema -verbose; /opt/hive/bin/hive --service metastore "]
+    volumes:
+      - ./hive-conf:/opt/hive/conf
+      - ./hive-jars/postgresql-42.6.0.jar:/opt/hive/lib/postgresql-42.6.0.jar
+    ports:
+      - "9083:9083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9083 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    networks:
+      - my_network
+
+
+  hive-server:
+    image: apache/hive:4.0.0
+    container_name: hive-server4
+    environment:
+      SERVICE_NAME: hiveserver2
+      HIVE_METASTORE_URI: thrift://hive-metastore4:9083
+      #- LANG=en_US.UTF-8
+      #- LC_ALL=en_US.UTF-8
+    depends_on:
+      - hive-metastore
+      - namenode
+    volumes:
+      - ./hive-conf:/opt/hive/conf
+      - ./hive-jars/postgresql-42.6.0.jar:/opt/hive/lib/postgresql-42.6.0.jar
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10000 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    entrypoint: ["/bin/bash", "-c", "until echo > /dev/tcp/postgres/5432; do echo Waiting for Postgres...; sleep 3; done; schematool -dbType postgres -initOrUpgradeSchema -verbose; /opt/hive/bin/hive --service metastore "]
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    networks:
+      - my_network
+
+  hue:
+    image: gethue/hue:4.6.0
+    container_name: hue
+    environment:
+      HUE_DEBUG: "True"
+      SERVICE_PRECONDITION: "namenode4:9870 hive-server4:10000"
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    depends_on:
+      - namenode
+      - hive-server
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./hue/conf:/usr/share/hue/desktop/conf
+    networks:
+      - my_network
+  spark-master:
+    image: bitnami/spark:3
+    container_name: spark-master4
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - my_network
+
+  spark-worker:
+    image: bitnami/spark:3
+    container_name: spark-worker4
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master4:7077
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081"
+    networks:
+      - my_network
+
+
+volumes:
+  pgdata:
+  namenode:
+  datanode:
+
+networks:
+  my_network:
+    driver: bridge

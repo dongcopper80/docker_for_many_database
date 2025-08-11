@@ -1,0 +1,49 @@
+services:
+  cassandra:
+    image: cassandra:4.1
+    container_name: cassandra
+    restart: unless-stopped
+    ports:
+      - "9042:9042" # CQL port
+      - "7000:7000" # cluster communication
+    environment:
+      CASSANDRA_CLUSTER_NAME: "Dongcopper80Cluster"
+      CASSANDRA_DC: "dc1"
+      CASSANDRA_RACK: "rack1"
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      # CASSANDRA_ENDPOINT_SNITCH trong Cassandra là biến môi trường dùng để cấu hình Snitch – tức là cơ chế Cassandra dùng để:
+      #   1. Xác định topology mạng (node nào ở datacenter nào, rack nào)
+      #   2. Quyết định cách phân phối và đọc dữ liệu trong cluster
+      #   3. Tối ưu tốc độ truy vấn bằng cách chọn replica gần nhất với client
+      # Snitch sẽ báo cho Cassandra biết vị trí vật lý hoặc logic của node trong hệ thống, để khi Replication Strategy hoạt động, Cassandra có thể phân phối dữ liệu hợp lý:
+      #   1. Giữ dữ liệu trong cùng DataCenter nếu client ở đó (giảm độ trễ)
+      #   2. Tránh đặt các replica trên cùng rack (tránh mất dữ liệu khi rack hỏng)
+      #   3. Tối ưu backup & failover
+      # Các giá trị phổ biến của CASSANDRA_ENDPOINT_SNITCH
+      #   SimpleSnitch	: Mặc định, dùng cho môi trường dev/test, không phân biệt DC hay rack
+      #   GossipingPropertyFileSnitch (khuyên dùng) : Dùng file cassandra-rackdc.properties để xác định DC & rack, có thể thay đổi động qua gossip protocol
+      #   PropertyFileSnitch : Giống trên nhưng đọc config một lần, không cập nhật động
+      #   Ec2Snitch : Tự nhận biết topology khi chạy trong AWS EC2 (1 region)
+      #   Ec2MultiRegionSnitch :	Tự nhận biết topology khi chạy nhiều region AWS
+      #   GoogleCloudSnitch : Tự nhận biết topology khi chạy trong Google Cloud
+      #   RackInferringSnitch : Suy luận DC & rack từ tên IP (ít dùng)
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+      - ./init:/docker-entrypoint-initdb.d
+    networks:
+      - my_network # Custom network (optional)
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT release_version FROM system.local;' 127.0.0.1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  cassandra_data:
+
+networks:
+  my_network: # Custom network definition (optional)
+    driver: bridge

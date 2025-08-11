@@ -1,0 +1,72 @@
+services:
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    ports:
+      - "8080:8080"   # Spark Master Web UI
+      - "7077:7077"   # Spark RPC
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080 >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - my_network
+    volumes:
+      - spark_data:/bitnami
+
+  spark-worker:
+    image: bitnami/spark:3.5.1
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=1
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8081:8081"   # Spark Worker Web UI
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081 >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 50s
+    networks:
+      - my_network
+    volumes:
+      - spark_data:/bitnami
+
+  spark-tester:
+    image: bitnami/spark:3.5.1
+    container_name: spark-tester
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    command: >
+      bash -c "echo 'Starting periodic SparkPi test job...';
+      while true; do
+        echo 'Running SparkPi job at' $(date);
+        /opt/bitnami/spark/bin/spark-submit --master spark://spark-master:7077 --class org.apache.spark.examples.SparkPi /opt/bitnami/spark/examples/jars/spark-examples_2.12-3.5.1.jar 5 &&
+        echo 'SparkPi job completed successfully' || echo 'SparkPi job failed';
+        sleep 300;
+      done"
+    networks:
+      - my_network
+    volumes:
+      - spark_data:/bitnami
+
+networks:
+  my_network:
+
+volumes:
+  spark_data:

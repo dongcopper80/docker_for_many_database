@@ -1,0 +1,18 @@
+-- Đặt NLS_CALENDAR mặc định cho instance
+ALTER SYSTEM SET NLS_CALENDAR = 'GREGORIAN' SCOPE=SPFILE;
+
+-- Tạo user ứng dụng nếu chưa có
+DECLARE
+  user_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO user_count FROM dba_users WHERE username = UPPER('${APP_USER}');
+  IF user_count = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER ${APP_USER} IDENTIFIED BY ${APP_USER_PASSWORD}';
+    EXECUTE IMMEDIATE 'GRANT CONNECT, RESOURCE TO ${APP_USER}';
+    EXECUTE IMMEDIATE 'ALTER USER ${APP_USER} QUOTA UNLIMITED ON USERS';
+  END IF;
+END;
+/
+
+-- Kiểm tra charset
+SELECT value FROM nls_database_parameters WHERE parameter = 'NLS_CHARACTERSET';

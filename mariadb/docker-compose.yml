@@ -1,0 +1,31 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: dongcopper80
+      MARIADB_DATABASE: car_retain
+      MARIADB_USER: dongnt
+      MARIADB_PASSWORD: dongcopper80
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./my.cnf:/etc/mysql/conf.d/my.cnf
+    networks:
+      - my_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pdongcopper80"]
+      interval: 10s      # khoảng thời gian giữa các lần check
+      timeout: 5s        # thời gian chờ mỗi lần check
+      retries: 5         # số lần thử lại trước khi coi là unhealthy
+      start_period: 30s  # thời gian chờ trước khi bắt đầu check
+
+networks:
+  my_network:   # tạo mạng custom
+    driver: bridge
+
+volumes:
+  mariadb_data: # volume lưu dữ liệu
+    driver: local
