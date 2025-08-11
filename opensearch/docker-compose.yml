@@ -1,0 +1,130 @@
+services:
+  opensearch-node1:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: opensearch-node1
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_master_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./data/node1:/usr/share/opensearch/data
+      - ./init-scripts:/usr/share/opensearch/init-scripts
+    ports:
+      - 9200:9200
+      - 9600:9600
+    networks:
+      - my_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -u admin:admin https://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    command: >
+      bash -c "
+      /usr/share/opensearch/opensearch-docker-entrypoint.sh &
+      echo '⏳ Đợi OpenSearch khởi động...' &&
+      until curl -k -u admin:admin https://localhost:9200/_cluster/health >/dev/null 2>&1; do sleep 5; done &&
+      echo '✅ OpenSearch sẵn sàng, tạo template tiếng Việt...' &&
+      curl -k -u admin:admin -XPUT https://localhost:9200/_template/vietnamese_template
+      -H 'Content-Type: application/json' -d @/usr/share/opensearch/init-scripts/vietnamese-template.json &&
+      echo '✅ Template tạo xong, insert dữ liệu test...' &&
+      bash /usr/share/opensearch/init-scripts/test-vietnamese.sh &&
+      wait
+      "
+
+  opensearch-node2:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: opensearch-node2
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node2
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_master_nodes=opensearch-node1,opensearch-node2
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./data/node2:/usr/share/opensearch/data
+    networks:
+      - my_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -u admin:admin https://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.1
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    environment:
+      - OPENSEARCH_HOSTS=["https://opensearch-node1:9200"]
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    networks:
+      - my_network
+    depends_on:
+      opensearch-node1:
+        condition: service_healthy
+    volumes:
+      - ./init-scripts:/usr/share/opensearch/init-scripts
+    command: >
+      bash -c "
+      /usr/share/opensearch-dashboards/bin/opensearch-dashboards &
+      sleep 20 &&
+      /usr/share/opensearch/init-scripts/init-opensearch.sh
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  search-api:
+    build:
+      context: ./search-api
+      dockerfile: Dockerfile
+    container_name: search-api
+    environment:
+      - PORT=3000
+      - OS_NODE=https://opensearch-node1:9200
+      - OS_USER=admin
+      - OS_PASS=admin
+    ports:
+      - 3000:3000
+    depends_on:
+      - opensearch-node1
+    networks:
+      - my_network
+
+  search-frontend:
+    build:
+      context: ./search-frontend
+      dockerfile: Dockerfile
+    container_name: search-frontend
+    ports:
+      - 8080:80
+    depends_on:
+      - search-api
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    driver: bridge
+
